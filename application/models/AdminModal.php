@@ -15,6 +15,78 @@ class AdminModal extends CI_Model
         ")->result_array();
     }
 
+    public function limitRows_($table, $select, $column_order, $column_search, $order, $join, $filter)
+    {
+        $this->selectField_($table, $select, $column_order, $column_search, $order, $join, $filter);
+        if (isset($_POST['length'])) {
+            if ($_POST['length'] != -1) {
+                $this->db->limit($_POST['length'], $_POST['start']);
+            }
+        }
+
+        $query = $this->db->get();
+        return $query->result();
+    }
+
+    protected function selectField_($table, $select, $column_order, $column_search, $order, $join, $filter)
+    {
+        $this->db->select($select);
+        $this->db->from($table);
+
+        if ($join != NULL) {
+            for ($i = 0; $i < count($join); $i++) {
+                $this->db->join($join[$i][0], $join[$i][1], 'left');
+            }
+        };
+        
+        if ($filter == 'now') {
+            $date = new DateTime("now");
+            $curr_date = $date->format('Y-m-d');
+            $this->db->where('DATE(tanggal)',$curr_date);//use date function
+        }else if($filter == 'week'){
+            $this->db->where('DATE(tanggal) >=', date('Y-m-d', strtotime('-7 days', strtotime(date('Y-m-d')))) );//use date function
+        }else if($filter == 'month'){
+            $this->db->where('MONTH(tanggal)', date('m'));//use date function
+        }else{
+            //year
+            $this->db->where('YEAR(tanggal)', date('Y'));//use date function
+        };
+
+        $i = 0;
+        foreach ($column_search as $item) {
+            if (isset($_POST['search'])) {
+                if ($_POST['search']['value']) {
+                    if ($i === 0) {
+                        $this->db->group_start();
+                        $this->db->like($item, $_POST['search']['value']);
+                    } else {
+                        $this->db->or_like($item, $_POST['search']['value']);
+                    }
+
+                    if (count($column_search) - 1 == $i) {
+                        $this->db->group_end();
+                    }
+                }
+            }
+            $i++;
+        }
+
+        $this->db->group_by('menu.id');
+        
+        if (isset($_POST['order'])) {
+            $this->db->order_by($column_order[$_POST['order']['0']['column']], $_POST['order']['0']['dir']);
+        } elseif (isset($order)) {
+            $order = $order;
+            $this->db->order_by(key($order), $order[key($order)]);
+        }
+    }
+
+    public function countFiltered_($table, $select, $column_order, $column_search, $order, $join, $filter)
+    {
+        $this->selectField_($table, $select, $column_order, $column_search, $order, $join, $filter);
+        return $this->db->count_all_results();
+    }
+
     public function getPendapatan($dari, $sampai)
     {
         $q = "SELECT id, day(tanggal) as tgl, month(tanggal) as bulan, year(tanggal) as tahun, count(id) as pesanan, sum(diskon) as diskon, sum(ppn) as ppn, sum(total_harga) as pendapatan

@@ -30,11 +30,180 @@ class Admin extends CI_Controller
     $data['jumlah_menu'] = $this->db->count_all('menu');
     $data['penghasilan'] = $this->AdminModal->getWeekly();
     $data['saya_karyawan'] = $this->db->get_where('karyawan', ['id' => $this->session->userdata('id_karyawan')])->row_array();
+
     $this->load->view('templates/header', $data);
     $this->load->view('templates/navbar', $data);
     $this->load->view('templates/sidebar', $data);
     $this->load->view('admin/home_ad', $data);
     $this->load->view('templates/footer', $data);
+  }
+
+  public function pie_barang()
+  {
+    $column_order = array('detail_pesanan.nama_menu', 'kategori.nama_kategori', 'detail_pesanan.jumlah', 'detail_pesanan.harga');
+    $column_search = array('detail_pesanan.nama_menu');
+    $order = array('SUM(detail_pesanan.jumlah)' => 'desc');
+
+    $table = 'pesanan';
+    $select = 'menu.foto, detail_pesanan.nama_menu, kategori.nama_kategori, SUM(detail_pesanan.jumlah) as jumlah, detail_pesanan.harga, pesanan.tanggal';
+
+    $join = array(
+      array('detail_pesanan', 'detail_pesanan.id_pesanan = pesanan.id'),
+      array('menu', 'menu.id = detail_pesanan.id_menu'),
+      array('kategori', 'kategori.id = menu.id_kategori'),
+    );
+
+    $filter = $this->input->post('filter');
+    $record = $this->AdminModal->limitRows_($table, $select, $column_order, $column_search, $order, $join, $filter);
+    
+    $bungkus = [];
+    $rand = array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
+    foreach ($record as $row) {
+      $color = '#' . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)];
+      $datas['label'] = $row->nama_menu;
+      $datas['data'][] = (int) $row->jumlah;
+      $datas['backgroundColor'][] = $color;
+
+      $labels[] = $row->nama_menu;
+    }
+    $bungkus[] = $datas;
+
+    $data['labels'] = $labels;
+    $data['datasets'] = $bungkus;
+
+    return $this->output
+      ->set_content_type('application/json')
+      ->set_status_header(200)
+      ->set_output(json_encode($data));
+
+  }
+
+  public function fetch_pendapatan()
+  {
+    $bungkus = [];
+
+    for ($i = date('Y'); $i >= 2020; $i -= 1) {
+      $datas = [];
+      $query =  $this->db->query("SELECT sum(jumlah_bayar) as total, MONTHNAME(tanggal) as month_name, YEAR(tanggal) as tahun FROM pesanan 
+      WHERE YEAR(tanggal) = ?
+      AND id_status = 3
+      AND id_status2 = 3
+      GROUP BY YEAR(tanggal), MONTH(tanggal)", array($i));
+
+      $record = $query->result();
+
+      $rand = array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
+
+
+      foreach ($record as $row) {
+        $color = '#' . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)];
+        $datas['label'] = $row->tahun;
+        $datas['data'][] = (int) $row->total;
+        $datas['backgroundColor'] = $color;
+      }
+      $bungkus[] = $datas;
+    }
+
+    // $result = json_encode($bungkus);
+    // echo $result;
+    // return;
+
+    return $this->output
+      ->set_content_type('application/json')
+      ->set_status_header(200)
+      ->set_output(json_encode($bungkus));
+  }
+
+  public function fetch_pendapatan_kategori()
+  {
+    $bungkus = [];
+
+    $tahun = $this->input->post('tahun');
+    $bulan = $this->input->post('bulan');
+
+
+    $datas = [];
+    $query =  $this->db->query("SELECT sum(jumlah_bayar) as total,
+                                    MONTHNAME(tanggal) as month_name,
+                                    YEAR(tanggal) as tahun, 
+                                    kategori.nama_kategori as kategori
+                                  FROM pesanan 
+                                  JOIN detail_pesanan ON detail_pesanan.id_pesanan = pesanan.id
+                                  JOIN menu ON menu.id = detail_pesanan.id_menu
+                                  JOIN kategori ON kategori.id = menu.id_kategori
+                                  WHERE YEAR(tanggal) = ?
+                                      AND MONTH(tanggal) = ?
+                                  AND id_status = 3
+                                  AND id_status2 = 3
+                                  GROUP BY kategori.nama_kategori
+                  ", array($tahun, $bulan));
+
+    $record = $query->result();
+
+    $rand = array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
+
+    $labels = [];
+
+    foreach ($record as $row) {
+      $color = '#' . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)] . $rand[rand(0, 15)];
+      $datas['label'] = $row->month_name . ' ' . $row->tahun;
+      $datas['data'][] = (int) $row->total;
+      $datas['backgroundColor'] = $color;
+
+      $labels[] = $row->kategori;
+    }
+    $bungkus[] = $datas;
+
+
+    // $result = json_encode($bungkus);
+    // echo $result;
+    // return;
+    $data['labels'] = $labels;
+    $data['datasets'] = $bungkus;
+
+    return $this->output
+      ->set_content_type('application/json')
+      ->set_status_header(200)
+      ->set_output(json_encode($data));
+  }
+
+  public function get_penjualan_barang()
+  {
+    $column_order = array('detail_pesanan.nama_menu', 'kategori.nama_kategori', 'detail_pesanan.jumlah', 'detail_pesanan.harga');
+    $column_search = array('detail_pesanan.nama_menu');
+    $order = array('SUM(detail_pesanan.jumlah)' => 'desc');
+
+    $table = 'pesanan';
+    $select = 'menu.foto, detail_pesanan.nama_menu, kategori.nama_kategori, SUM(detail_pesanan.jumlah) as jumlah, detail_pesanan.harga, pesanan.tanggal';
+
+    $join = array(
+      array('detail_pesanan', 'detail_pesanan.id_pesanan = pesanan.id'),
+      array('menu', 'menu.id = detail_pesanan.id_menu'),
+      array('kategori', 'kategori.id = menu.id_kategori'),
+    );
+
+    $filter = $this->input->post('filter');
+
+    $list = $this->AdminModal->limitRows_($table, $select, $column_order, $column_search, $order, $join, $filter);
+    $data = array();
+    $no = $this->input->post('start');
+    foreach ($list as $field) {
+      $no++;
+      $row = array();
+      $row['nama_menu'] = $field->nama_menu;
+      $row['kategori'] = $field->nama_kategori;
+      $row['terjual'] = $field->jumlah;
+      $row['pendapatan'] = 'Rp ' . number_format($field->harga * $field->jumlah, 0, ',', '.');
+      $data[] = $row;
+    }
+
+    $output = array(
+      "draw" => $this->input->post('draw'),
+      "recordsTotal" => $this->AdminModal->countFiltered_($table, $select, $column_order, $column_search, $order, $join, $filter),
+      "recordsFiltered" => $this->AdminModal->countFiltered_($table, $select, $column_order, $column_search, $order, $join, $filter),
+      "data" => $data,
+    );
+    echo json_encode($output);
   }
 
   public function profil()
@@ -61,7 +230,7 @@ class Admin extends CI_Controller
     $this->load->view('admin/gallery', $data);
     $this->load->view('templates/footer', $data);
   }
-  
+
   public function log_pesanan()
   {
     $this->load->view('templates/404');
@@ -210,47 +379,47 @@ class Admin extends CI_Controller
     $this->session->set_flashdata('message', '<div class="tutup alert alert-success" role="alert">Data Profil Resto Berhasil Disimpan!</div>');
     redirect('admin/profil');
   }
-  
+
   public function privilege()
   {
-     $this->form_validation->set_rules('username', 'Username', 'required|trim');
-     $this->form_validation->set_rules('password', 'Password', 'required|trim');
+    $this->form_validation->set_rules('username', 'Username', 'required|trim');
+    $this->form_validation->set_rules('password', 'Password', 'required|trim');
 
-     $data['profil'] = $this->db->get_where('profil', ['id' => 1])->row_array();
-     if ($this->form_validation->run() == false) {
-        $data['title'] = 'Privilage Access';
-        $this->load->view('templates/header_login', $data);
-        $this->load->view('admin/privilege');
-        $this->load->view('templates/footer_login');
-     } else {
-        $this->laporan();
-     }
+    $data['profil'] = $this->db->get_where('profil', ['id' => 1])->row_array();
+    if ($this->form_validation->run() == false) {
+      $data['title'] = 'Privilage Access';
+      $this->load->view('templates/header_login', $data);
+      $this->load->view('admin/privilege');
+      $this->load->view('templates/footer_login');
+    } else {
+      $this->laporan();
+    }
   }
 
   public function laporan()
   {
     $password = $this->input->post('password');
     $user     = $this->db->get_where('karyawan', ['id' => $this->session->userdata('id_karyawan')])->row_array();
-    if(empty($password)){
-        redirect('admin/privilege');
-    }else{
-        if (password_verify($password, $user['password'])) {
-            if ($user['role_id'] == 1) {
-                $data['title'] = 'Laporan';
-                $data['profil'] = $this->db->get_where('profil', ['id' => 1])->row_array();
-                $data['saya_karyawan'] = $this->db->get_where('karyawan', ['id' => $this->session->userdata('id_karyawan')])->row_array();
-                $this->load->view('templates/header', $data);
-                $this->load->view('templates/navbar', $data);
-                $this->load->view('templates/sidebar', $data);
-                $this->load->view('admin/laporan');
-                $this->load->view('templates/footer');
-            }else{
-                redirect('auth/logout');
-            } 
+    if (empty($password)) {
+      redirect('admin/privilege');
+    } else {
+      if (password_verify($password, $user['password'])) {
+        if ($user['role_id'] == 1) {
+          $data['title'] = 'Laporan';
+          $data['profil'] = $this->db->get_where('profil', ['id' => 1])->row_array();
+          $data['saya_karyawan'] = $this->db->get_where('karyawan', ['id' => $this->session->userdata('id_karyawan')])->row_array();
+          $this->load->view('templates/header', $data);
+          $this->load->view('templates/navbar', $data);
+          $this->load->view('templates/sidebar', $data);
+          $this->load->view('admin/laporan');
+          $this->load->view('templates/footer');
         } else {
-            $this->session->set_flashdata('message', '<div class="alert alert-danger" role="alert">Password Salah !</div>');
-            redirect('admin/privilege');
+          redirect('auth/logout');
         }
+      } else {
+        $this->session->set_flashdata('message', '<div class="alert alert-danger" role="alert">Password Salah !</div>');
+        redirect('admin/privilege');
+      }
     }
   }
 
